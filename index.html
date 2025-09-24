@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>手眼協調挑戰賽</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @keyframes slideIn {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+    .slide-in { animation: slideIn 0.5s ease-out; }
+    .pulse { animation: pulse 1s infinite; }
+    @keyframes pulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.1); }
+      100% { transform: scale(1); }
+    }
+    .progress-bar { transition: width 0.1s linear; }
+  </style>
+</head>
+<body class="bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center min-h-screen">
+  <div class="bg-white p-6 rounded-lg shadow-lg w-full max-w-md">
+    <h1 class="text-3xl font-bold text-center mb-4 text-purple-700">手眼協調挑戰賽</h1>
+    
+    <!-- 參賽者輸入 -->
+    <div class="mb-4">
+      <label for="participantName" class="block text-sm font-medium text-gray-700">玩家名稱</label>
+      <input id="participantName" type="text" class="mt-1 p-2 w-full border rounded-md focus:ring-2 focus:ring-purple-500" placeholder="輸入你的遊戲ID" required>
+    </div>
+    
+    <!-- 計時控制 -->
+    <div class="flex justify-between mb-4">
+      <button id="startButton" class="bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600 pulse">開始挑戰</button>
+      <button id="stopButton" class="bg-red-500 text-white px-4 py-2 rounded-md hover:bg-red-600" disabled>結束挑戰</button>
+    </div>
+    
+    <!-- 計時顯示與進度條 -->
+    <div class="text-center mb-4">
+      <span id="timerDisplay" class="text-2xl font-mono text-purple-700">00:00.00</span>
+      <div class="w-full bg-gray-200 rounded-full h-2.5 mt-2">
+        <div id="progressBar" class="bg-purple-500 h-2.5 rounded-full progress-bar" style="width: 0%"></div>
+      </div>
+    </div>
+    
+    <!-- 即時排名提示 -->
+    <div id="rankMessage" class="text-center text-lg font-semibold mb-4 hidden"></div>
+    
+    <!-- 排行榜 -->
+    <h2 class="text-lg font-semibold mb-2 text-purple-700">英雄榜</h2>
+    <div class="max-h-96 overflow-y-auto">
+      <ul id="leaderboard" class="divide-y divide-gray-200"></ul>
+    </div>
+  </div>
+
+  <!-- Firebase SDK (模組化寫法) -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+    // ✅ Firebase 設定（用你提供的）
+    const firebaseConfig = {
+      apiKey: "AIzaSyBMRnpFPi7By0Efxuvp3CW9LVrMPJac5oE",
+      authDomain: "eyehandchallenge.firebaseapp.com",
+      databaseURL: "https://eyehandchallenge-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "eyehandchallenge",
+      storageBucket: "eyehandchallenge.firebasestorage.app",
+      messagingSenderId: "6116040467",
+      appId: "1:6116040467:web:db79d7a5b643d9e7afc4e6",
+      measurementId: "G-RLMHVTLCRG"
+    };
+
+    // 初始化 Firebase
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    let startTime, timerInterval;
+    const maxTime = 60; // 進度條最大時間 (60秒)
+
+    // DOM 元素
+    const startButton = document.getElementById("startButton");
+    const stopButton = document.getElementById("stopButton");
+    const participantInput = document.getElementById("participantName");
+    const timerDisplay = document.getElementById("timerDisplay");
+    const progressBar = document.getElementById("progressBar");
+    const rankMessage = document.getElementById("rankMessage");
+    const leaderboard = document.getElementById("leaderboard");
+
+    // 開始計時
+    startButton.addEventListener("click", () => {
+      const name = participantInput.value.trim();
+      if (!name) {
+        alert("請輸入你的遊戲ID！");
+        return;
+      }
+      startTime = new Date();
+      startButton.disabled = true;
+      stopButton.disabled = false;
+      participantInput.disabled = true;
+      rankMessage.classList.add("hidden");
+      timerInterval = setInterval(updateTimer, 10);
+      playSound("start.mp3");
+    });
+
+    // 結束挑戰
+    stopButton.addEventListener("click", () => {
+      clearInterval(timerInterval);
+      const endTime = new Date();
+      const timeTaken = (endTime - startTime) / 1000;
+      const name = participantInput.value.trim();
+
+      // ✅ 將成績寫入 Firebase
+      set(ref(db, "results/" + name), timeTaken);
+
+      // 重置 UI
+      startButton.disabled = false;
+      stopButton.disabled = true;
+      participantInput.disabled = false;
+      participantInput.value = "";
+      timerDisplay.textContent = "00:00.00";
+      progressBar.style.width = "0%";
+
+      playSound("end.mp3");
+    });
+
+    // 更新計時器
+    function updateTimer() {
+      const now = new Date();
+      const timeElapsed = (now - startTime) / 1000;
+      const minutes = Math.floor(timeElapsed / 60);
+      const seconds = Math.floor(timeElapsed % 60);
+      const milliseconds = Math.floor((timeElapsed % 1) * 100);
+      timerDisplay.textContent = 
+        `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(milliseconds).padStart(2, '0')}`;
+      const progress = Math.min((timeElapsed / maxTime) * 100, 100);
+      progressBar.style.width = `${progress}%`;
+    }
+
+    // ✅ Firebase 排行榜即時同步
+    const resultsRef = ref(db, "results");
+    onValue(resultsRef, (snapshot) => {
+      leaderboard.innerHTML = "";
+      if (snapshot.exists()) {
+        let results = snapshot.val();
+        let sorted = Object.entries(results).sort((a, b) => a[1] - b[1]);
+        sorted.forEach(([name, time], index) => {
+          const li = document.createElement("li");
+          li.className = `py-2 flex justify-between slide-in ${index < 10 ? 'bg-yellow-100' : ''}`;
+          const medal = index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : index < 10 ? "🏅" : "";
+          li.innerHTML = `<span>${index + 1}. ${name} ${medal}</span><span>${time.toFixed(2)} 秒</span>`;
+          leaderboard.appendChild(li);
+        });
+
+        // 顯示自己排名
+        const playerName = participantInput.value.trim();
+        if (playerName) {
+          const myRank = sorted.findIndex(r => r[0] === playerName) + 1;
+          if (myRank > 0) {
+            rankMessage.textContent = myRank <= 10 ?
+              `🎉 恭喜！你排名第 ${myRank}` :
+              `你的排名：第 ${myRank}`;
+            rankMessage.classList.remove("hidden");
+          }
+        }
+      }
+    });
+
+    // 播放音效
+    function playSound(file) {
+      const audio = new Audio(file);
+      audio.play().catch(() => console.log("音效播放失敗"));
+    }
+  </script>
+</body>
+</html>
